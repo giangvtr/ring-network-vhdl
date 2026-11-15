@@ -17,6 +17,7 @@ architecture TB_ARC of NODE_TB is
             MESS_IN                : in std_logic_vector (3 downto 0);
             TR_IN                  : in std_logic_vector (7 downto 0);
             TEST_OK                : out std_logic;
+            BUSY                   : out std_logic;
             MESS_OUT               : out std_logic_vector (3 downto 0);
             TR_OUT                 : out std_logic_vector (7 downto 0)
         );
@@ -32,6 +33,7 @@ architecture TB_ARC of NODE_TB is
     signal TR_OUT_SIG    : std_logic_vector(7 downto 0);
     signal TEST_IN_SIG   : std_logic := '0';
     signal TEST_OK_SIG   : std_logic;
+    signal BUSY_SIG      : std_logic;
     signal ENV_MESS_SIG  : std_logic := '0';
     signal MESS_IN_SIG   : std_logic_vector(3 downto 0) := (others => '0');
     signal MESS_OUT_SIG  : std_logic_vector(3 downto 0);
@@ -59,6 +61,7 @@ begin
             TR_OUT     => TR_OUT_SIG,
             TEST_IN    => TEST_IN_SIG,
             TEST_OK    => TEST_OK_SIG,
+            BUSY       => BUSY_SIG,
             ENV_MESS   => ENV_MESS_SIG,
             MESS_IN    => MESS_IN_SIG,
             MESS_OUT   => MESS_OUT_SIG
@@ -76,7 +79,7 @@ begin
 
     STIMULI_GEN : process
     begin
-        report "Début de la simulation (adr_cur=5, adr_dest=8)..." severity note;
+        report "Dï¿½but de la simulation (adr_cur=5, adr_dest=8)..." severity note;
         wait until rising_edge(CLK_SIG);
         
         -- etat init
@@ -86,7 +89,7 @@ begin
         
         -- test mode
 	TEST_IN_SIG <= '1';
-        wait for CLK_PERIOD; -- TR_OUT devrait être 5C
+        wait for CLK_PERIOD; -- TR_OUT devrait ï¿½tre 5C
         
         -- Simuler retour imediat trame 5C
         TR_IN_SIG <= FRAME_TEST;
@@ -117,7 +120,46 @@ begin
         
         TR_IN_SIG <= FRAME_DEFAULT;
         wait for 2 * CLK_PERIOD;
-        
-        wait; 
+
+        -- --- S7: Collision injection / transit (buffer TX + BUSY) ---
+        report "--- S7: ENV_MESS pendant une trame en transit ---" severity note;
+        -- une trame en transit occupe le slot au moment ou on veut injecter x"7"
+        TR_IN_SIG    <= FRAME_OTHER_DEST_A1;
+        ENV_MESS_SIG <= '1';
+        MESS_IN_SIG  <= x"7";
+        wait until rising_edge(CLK_SIG);
+        wait for 1 ns;
+        -- la trame en transit est retransmise, le message local est bufferise
+        assert TR_OUT_SIG = FRAME_OTHER_DEST_A1
+            report "S7a: la trame en transit doit etre retransmise" severity error;
+        assert BUSY_SIG = '1'
+            report "S7b: BUSY doit etre a 1 (message bufferise)" severity error;
+
+        -- le message a ete accepte: l'environnement relache ENV_MESS; transit continue
+        ENV_MESS_SIG <= '0';
+        MESS_IN_SIG  <= x"0";
+        wait until rising_edge(CLK_SIG);
+        wait for 1 ns;
+        assert TR_OUT_SIG = FRAME_OTHER_DEST_A1
+            report "S7c: transit toujours prioritaire" severity error;
+        assert BUSY_SIG = '1'
+            report "S7d: BUSY reste a 1 tant que le buffer n'est pas vide" severity error;
+
+        -- un slot libre arrive: le message bufferise doit sortir (x"8" & x"7"), BUSY retombe
+        TR_IN_SIG <= FRAME_DEFAULT;
+        wait until rising_edge(CLK_SIG);
+        wait for 1 ns;
+        assert TR_OUT_SIG = x"87"
+            report "S7e: le message bufferise doit etre emis sur le slot libre" severity error;
+        assert BUSY_SIG = '0'
+            report "S7f: BUSY doit retomber apres emission du buffer" severity error;
+
+        wait until rising_edge(CLK_SIG);
+        wait for 1 ns;
+        assert TR_OUT_SIG = FRAME_DEFAULT
+            report "S7g: retour a la trame vide" severity error;
+
+        report "Fin de la simulation node_tb" severity note;
+        wait;
     end process STIMULI_GEN;
 end architecture TB_ARC;
