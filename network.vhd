@@ -34,7 +34,7 @@ END ENTITY network;
 
 architecture ring3 of network is
 	constant total_node: natural := 4*N - 4;
-	type link_array is array (0 to total_node-1) of std_logic_vector(7 downto 0);   --contient des trames 8 bits
+	type link_array is array (0 to total_node-1) of std_logic_vector(8 downto 0);   --trames 9 bits: resv + adresse + message
 
 	--Question 4: adresse mapping
 	type addr_array is array(0 to 3, 0 to 3) of std_logic_vector(3 downto 0);
