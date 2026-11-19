@@ -101,6 +101,12 @@ begin
                     if RESV_TR_IN = '1' and reserving = '0' then
                         TR_OUT_INT <= '1' & x"F0";
 
+                        -- pour l'environnement ce slot est equivalent a un slot occupe:
+                        -- bufferiser le message presente (contrat BUSY='0' => accepte)
+                        if ENV_MESS = '1' and tx_buf(7 downto 4) = x"F" then
+                            tx_buf <= adr_dest & MESS_IN;
+                        end if;
+
                     -- ce noeud a une reservation en cours: il n'utilise QUE son slot reserve
                     -- (les slots libres ordinaires sont laisses aux autres noeuds)
                     elsif reserving = '1' then
